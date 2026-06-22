@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CITIZEN
+  COMMUNITY_MANAGER
+  HEALTHCARE_ADMIN
+  EDUCATION_ADMIN
+  EMERGENCY_OFFICER
+  GOVERNMENT_ADMIN
+  SYSTEM_ADMIN
+}
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  passwordHash   String?
+  phone          String?
+  fullName       String
+  role           Role      @default(CITIZEN)
+  organization   String?
+  isVerified     Boolean   @default(false)
+  
+  // Location
+  country        String?
+  state          String?
+  city           String?
+  communityZone  String?
+
+  // Preferences & Meta
+  preferences    Json?     // Notification, Language, Accessibility
+  aiProfile      Json?     // Interests, preferred topics
+  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  
+  auditLogs      AuditLog[]
+  chatSessions   ChatSession[]
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  action      String   // e.g., "LOGIN", "VIEW_REPORT", "DELETE_USER"
+  resource    String   // e.g., "Complaint#123", "Dashboard"
+  metadata    Json?    // IP address, user agent, etc.
+  createdAt   DateTime @default(now())
+}
+
+model ChatSession {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  title     String?
+  createdAt DateTime  @default(now())
+  messages  Message[]
+}
+
+model Message {
+  id            String      @id @default(uuid())
+  sessionId     String
+  session       ChatSession @relation(fields: [sessionId], references: [id])
+  role          String      // "user", "assistant", "system"
+  content       String
+  agentUsed     String?     // e.g., "HealthcareAgent"
+  confidence    Float?      // XAI score
+  reasoning     String?     // XAI reasoning trace
+  sources       Json?       // Citations
+  createdAt     DateTime    @default(now())
+}
+
+model DocumentChunk {
+  id          String   @id @default(uuid())
+  content     String
+  metadata    Json?    // Source URL, doc title, author
+  embedding   Json?    // Gemini 768-dim embeddings
+  createdAt   DateTime @default(now())
+}
+
+model DataEvent {
+  id            String   @id @default(uuid())
+  source        String   // e.g., 'iot_sensor', 'citizen_app', 'traffic_cam'
+  eventType     String   // e.g., 'complaint', 'traffic_update', 'air_quality'
+  payload       Json     // The raw structured or unstructured data
+  status        String   @default("PENDING") // PENDING, PROCESSING, ENRICHED, FAILED
+  aiEnrichment  Json?    // Output from the AI Enrichment Worker
+  createdAt     DateTime @default(now())
+  processedAt   DateTime?
+}
+
+model RiskForecast {
+  id              String   @id @default(uuid())
+  domain          String   // e.g., 'MOBILITY', 'HEALTHCARE', 'ENVIRONMENT', 'OVERALL'
+  riskScore       Int      // 0-100
+  prediction      String   // e.g., "Flood risk increasing in Zone 4"
+  confidence      Float    // e.g., 88.5
+  factors         Json     // Array of strings
+  recommendations Json     // Array of strings
+  createdAt       DateTime @default(now())
+  validUntil      DateTime
+}
+
+model WorkflowExecution {
+  id              String   @id @default(uuid())
+  triggerSource   String   // e.g., 'DataEvent#123', 'RiskForecast#456'
+  workflowType    String   // e.g., 'SOP_FLOOD_RESPONSE', 'SOP_COMPLAINT_ROUTING'
+  status          String   @default("ACTIVE") // ACTIVE, PENDING_APPROVAL, COMPLETED, ESCALATED, FAILED
+  steps           Json     // Array of executed steps { action: string, status: string, timestamp: date }
+  pendingApproval String?  // e.g., 'BUDGET_ALLOCATION', 'RESOURCE_DEPLOYMENT'
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
